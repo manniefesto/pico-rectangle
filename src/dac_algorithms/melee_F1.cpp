@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "dac_algorithms/melee_F1.hpp"
 #include "communication_protocols/joybus.hpp"
 
@@ -173,6 +174,8 @@ GCReport getGCReport(GpioToButtonSets::F1::ButtonSet buttonSet) {
     gcReport.l = bs.l;
     gcReport.r = bs.r;
     gcReport.start = bs.start;
+
+    printf("Sending button report");
 
     return gcReport;
 }
