@@ -1,0 +1,17 @@
+[3:39 PM] Haystack: Does the WUP-028 mode even use HID? I assumed it doesn't
+[3:39 PM] Arte: no it doesn't
+[3:40 PM] hyp3r: Oh ..
+[3:40 PM] hyp3r: Hmm
+[3:40 PM] Arte: though it has a HID descriptor
+[3:40 PM] Arte: well no, it does use it
+[3:40 PM] Arte: it's like
+[3:41 PM] Arte: by default the WUP-028, when it works on Switch or Wii U, does use HID
+[3:41 PM] Arte: but it doesn't provide a descriptor that explains which byte means what
+[3:41 PM] Arte: ie what HID is usually used for
+[3:41 PM] Arte: it's "raw HID"
+[3:41 PM] Arte: it opts into the HID protocol, but then it just sends a raw pack of bytes and the receiver is supposed to know how to handle them
+[3:41 PM] Arte: the Wii U and Switch do
+[3:41 PM] Arte: but not Windows
+[3:42 PM] Arte: so in order to use it with an emulator, we force the usage of a different device by mapping WinUSB to this device instead of HidUSB (it makes perfect sense Windows thinks it should use HidUSB as the descriptor says it's a HID device)
+[3:43 PM] Arte: and now we get the raw communications and we do the work of understanding which byte means what ourselves 
+[3:43 PM] Arte: so, the WUP-028 does ask the host to use HID, but in order to use it Slippi, we force Windows not to use HID with it
