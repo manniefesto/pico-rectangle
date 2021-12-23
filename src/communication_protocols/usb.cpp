@@ -99,7 +99,8 @@ struct usb_endpoint_configuration {
 // Struct in which we keep the device configuration
 struct usb_device_configuration {
     const usb_device_descriptor *device_descriptor;
-    const usb_interface_descriptor *interface_descriptor;
+    const usb_interface_descriptor *interface1_descriptor;
+    const usb_interface_descriptor *interface2_descriptor;
     const usb_configuration_descriptor *config_descriptor;
     const usb_hid_descriptor *hid_descriptor;
     const char *lang_descriptor;
@@ -110,13 +111,17 @@ struct usb_device_configuration {
 // Construct these in entry point
 usb_device_configuration dev_config;
 usb_device_descriptor device_descriptor;
-usb_interface_descriptor interface_descriptor;
+usb_interface_descriptor interface1_descriptor;
+usb_interface_descriptor interface2_descriptor;
 usb_configuration_descriptor config_descriptor;
 
 usb_hid_descriptor hid_descriptor;
 
-usb_endpoint_descriptor ep_in;
-usb_endpoint_descriptor ep_out;
+usb_endpoint_descriptor ep_hid_in;
+usb_endpoint_descriptor ep_hid_out;
+
+usb_endpoint_descriptor ep_cdc_in;
+usb_endpoint_descriptor ep_cdc_out;
 
 const char **descriptor_strings;
 uint16_t descriptor_strings_len;
@@ -428,9 +433,12 @@ void usb_handle_config_descriptor(volatile usb_setup_packet *pkt) {
 
     // If we more than just the config descriptor copy it all
     if (pkt->wLength >= d->wTotalLength) {
-        memcpy((void *) buf, dev_config.interface_descriptor, sizeof(usb_interface_descriptor));
+
+        //Main
+        memcpy((void *) buf, dev_config.interface1_descriptor, sizeof(usb_interface_descriptor));
         buf += sizeof(usb_interface_descriptor);
 
+        //HID Interface
         if (useHID) {
             memcpy((void *) buf, dev_config.hid_descriptor, sizeof(usb_hid_descriptor));
             buf += sizeof(usb_hid_descriptor);
@@ -438,14 +446,19 @@ void usb_handle_config_descriptor(volatile usb_setup_packet *pkt) {
 
         const usb_endpoint_configuration *ep = dev_config.endpoints;
 
-        // Copy all the endpoint descriptors starting from EP1
-        for (uint i = 2; i < USB_NUM_ENDPOINTS; i++) {
-            if (ep[i].descriptor) {
-                log_uart0("Added descriptor ep#");log_uart0_int(i);log_uart0("\n");
-                memcpy((void *) buf, ep[i].descriptor, sizeof(usb_endpoint_descriptor));
-                buf += sizeof(usb_endpoint_descriptor);
-            }
-        }
+        memcpy((void *) buf, ep[2].descriptor, sizeof(usb_endpoint_descriptor));
+        buf += sizeof(usb_endpoint_descriptor);
+
+        memcpy((void *) buf, ep[3].descriptor, sizeof(usb_endpoint_descriptor));
+        buf += sizeof(usb_endpoint_descriptor);
+
+        //CDC Interface
+        memcpy((void *) buf, dev_config.interface2_descriptor, sizeof(usb_interface_descriptor));
+        buf += sizeof(usb_interface_descriptor);
+
+
+
+        
 
     }
 
@@ -848,7 +861,7 @@ void enterMode(Configuration config, int headroomUs) {
     /* Initialize structures */
 
     // Always same size, always usb_dt, always interrupt, always bInterval1, the variables here are whether the 2nd endpoint is id 1 or 2, and the max packet sizes
-    ep_in = {
+    ep_hid_in = {
         .bLength          = sizeof(usb_endpoint_descriptor),
         .bDescriptorType  = USB_DT_ENDPOINT,
         .bEndpointAddress = 0x81, // In endpoint (device to host), always ID 1
@@ -856,7 +869,7 @@ void enterMode(Configuration config, int headroomUs) {
         .wMaxPacketSize   = config.inEpMaxPacketSize,
         .bInterval        = 1 // 1000 Hz reporting
     };
-    ep_out = {
+    ep_hid_out = {
         .bLength          = sizeof(usb_endpoint_descriptor),
         .bDescriptorType  = USB_DT_ENDPOINT,
         .bEndpointAddress = config.epOutId, // Out endpoint (host to device), ID 1 or 2
@@ -865,6 +878,23 @@ void enterMode(Configuration config, int headroomUs) {
         .bInterval        = 1 // 1000 Hz rumble
     };
     epOutId = config.epOutId;
+
+    ep_cdc_in = {
+        .bLength          = sizeof(usb_endpoint_descriptor),
+        .bDescriptorType  = USB_DT_ENDPOINT,
+        .bEndpointAddress = 0x81, // In endpoint (device to host), always ID 1
+        .bmAttributes     = USB_TRANSFER_TYPE_INTERRUPT,
+        .wMaxPacketSize   = config.inEpMaxPacketSize,
+        .bInterval        = 1 // 1000 Hz reporting
+    };
+    ep_cdc_out = {
+        .bLength          = sizeof(usb_endpoint_descriptor),
+        .bDescriptorType  = USB_DT_ENDPOINT,
+        .bEndpointAddress = config.epOutId, // Out endpoint (host to device), ID 1 or 2
+        .bmAttributes     = USB_TRANSFER_TYPE_INTERRUPT,
+        .wMaxPacketSize   = config.outEpMaxPacketSize,
+        .bInterval        = 1 // 1000 Hz rumble
+    };
 
     // The descriptor string is a usb_configurations parameter
     descriptor_strings = config.descriptorStrings;
@@ -903,7 +933,7 @@ void enterMode(Configuration config, int headroomUs) {
     };
 
     // The only variable here is the bInterfaceClass
-    interface_descriptor = {
+    interface1_descriptor = {
         .bLength            = sizeof(usb_interface_descriptor),
         .bDescriptorType    = USB_DT_INTERFACE,
         .bInterfaceNumber   = 0,
@@ -915,11 +945,23 @@ void enterMode(Configuration config, int headroomUs) {
         .iInterface         = 0
     };
 
+    interface2_descriptor = {
+        .bLength            = sizeof(usb_interface_descriptor),
+        .bDescriptorType    = USB_DT_INTERFACE,
+        .bInterfaceNumber   = 1,
+        .bAlternateSetting  = 0,
+        .bNumEndpoints      = 2,    // Always 2 endpoints
+        .bInterfaceClass    = (uint8_t)0x02, // CDC
+        .bInterfaceSubClass = 0,
+        .bInterfaceProtocol = 0,
+        .iInterface         = 0
+    };
+
     // The variable here is the size, that depends on whether we have a HID descriptor or not
     config_descriptor = {
         .bLength         = sizeof(usb_configuration_descriptor),
         .bDescriptorType = USB_DT_CONFIG,
-        .wTotalLength    = (uint16_t)(sizeof(usb_configuration_descriptor) +
+        .wTotalLength    = (uint16_t)(sizeof(usb_configuration_descriptor) + sizeof(usb_configuration_descriptor) +
                             sizeof(usb_interface_descriptor) +
                             (config.hid ? sizeof(usb_hid_descriptor) : 0) +
                             2 * sizeof(usb_endpoint_descriptor)),
@@ -932,7 +974,8 @@ void enterMode(Configuration config, int headroomUs) {
 
     dev_config = {
         .device_descriptor = &device_descriptor,
-        .interface_descriptor = &interface_descriptor,
+        .interface1_descriptor = &interface1_descriptor,
+        .interface2_descriptor = &interface2_descriptor,
         .config_descriptor = &config_descriptor,
         .hid_descriptor = &hid_descriptor,
         .lang_descriptor = lang_descriptor,
@@ -955,7 +998,7 @@ void enterMode(Configuration config, int headroomUs) {
                 .data_buffer = &usb_dpram->ep0_buf_a[0]
             },
             {
-                .descriptor = &ep_in,
+                .descriptor = &ep_hid_in,
                 .handler = &ep_in_handler,
                 // EP1 starts at offset 0 for endpoint control
                 .endpoint_control = &usb_dpram->ep_ctrl[0].in,
@@ -964,7 +1007,7 @@ void enterMode(Configuration config, int headroomUs) {
                 .data_buffer = &usb_dpram->epx_data[0 * 64]
             },
             {
-                .descriptor = &ep_out,
+                .descriptor = &ep_hid_out,
                 .handler = &ep_out_handler,
                 .endpoint_control = &usb_dpram->ep_ctrl[config.epOutId-1].out,
                 .buffer_control = &usb_dpram->ep_buf_ctrl[config.epOutId].out,

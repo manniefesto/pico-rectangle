@@ -29,4 +29,3 @@ add_executable(pico_rectangle
 target_link_libraries(pico_rectangle pico_stdlib pico_time pico_bootrom hardware_resets hardware_irq hardware_sync hardware_flash)
 
 pico_add_extra_outputs(pico_rectangle)
-pico_enable_stdio_usb(pico_rectangle 1)
